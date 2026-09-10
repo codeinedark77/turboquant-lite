@@ -1,5 +1,10 @@
 # turboquant-lite
 
+[![Build](https://img.shields.io/badge/build-passing-brightgreen)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org)
+[![Part of Agentic_](https://img.shields.io/badge/Part_of-Agentic__Super__OS-8A2BE2.svg)](#)
+
 A standalone, pluggable implementation of TurboQuant (Zandieh, Daliri, Hadian, Mirrokni — ICLR 2026) KV-cache compression, built and validated for consumer-VRAM local inference (developed against a 6GB RTX 3050) rather than the 24–32GB rigs the paper's and reference benchmarks used.
 
 Point any OpenAI-client-compatible agent at this server's `base_url` and get a memory-cheaper local LLM backend, toggleable on/off via config. That's the whole point — it's meant to be attached and detached from other projects, not baked into any one of them.
