@@ -1,0 +1,13 @@
+torch>=2.0
+
+[dev]
+pytest>=8.0
+
+[empire]
+langchain-openai>=1.0
+langchain-core>=1.0
+
+[serve]
+fastapi>=0.110
+uvicorn>=0.29
+transformers>=5.14

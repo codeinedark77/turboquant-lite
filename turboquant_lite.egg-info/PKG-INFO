@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: turboquant-lite
+Version: 0.1.0
+Summary: Pluggable TurboQuant KV-cache quantization, scoped for consumer-VRAM local inference.
+Requires-Python: >=3.10
+Requires-Dist: torch>=2.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Provides-Extra: serve
+Requires-Dist: fastapi>=0.110; extra == "serve"
+Requires-Dist: uvicorn>=0.29; extra == "serve"
+Requires-Dist: transformers>=5.14; extra == "serve"
+Provides-Extra: empire
+Requires-Dist: langchain-openai>=1.0; extra == "empire"
+Requires-Dist: langchain-core>=1.0; extra == "empire"
