@@ -11,6 +11,43 @@ Point any OpenAI-client-compatible agent at this server's `base_url` and get a m
 
 **Read `ARCHITECTURE.md` for the full design rationale, the honest test-by-test findings, and exactly what's confirmed vs. still open.** This file is just how to run it.
 
+## ⚡ Core Architecture (KV-Cache Compression)
+
+```mermaid
+graph TD
+    subgraph "OpenAI Compatible API Server"
+        REQ[Client Request] --> API[FastAPI /v1/chat/completions]
+        API --> MODEL[HuggingFace AutoModelForCausalLM]
+    end
+
+    subgraph "TurboQuant-Lite Engine"
+        MODEL --> TQ[TurboQuant Cache Hook]
+        
+        subgraph "Compression Layer"
+            TQ --> ROT[RoPE Rotation]
+            ROT --> LL[Lloyd-Max Quantizer]
+            LL --> BP[2-bit / 4-bit Bitpacking]
+        end
+        
+        subgraph "Decompression Layer"
+            BP --> UNP[Unpacking]
+            UNP --> DEQ[Dequantization]
+        end
+    end
+
+    subgraph "Attention Mechanism"
+        DEQ --> ATTN[Transformers Attention Forward]
+        ATTN --> OUT[Next Token Generation]
+    end
+    
+    OUT --> API
+    
+    style API fill:#e74c3c,stroke:#fff,stroke-width:2px,color:#fff
+    style LL fill:#8a2be2,stroke:#fff,stroke-width:2px,color:#fff
+    style ATTN fill:#2c3e50,stroke:#fff,stroke-width:2px,color:#fff
+    style OUT fill:#27ae60,stroke:#fff,stroke-width:2px,color:#fff
+```
+
 ## Status at a glance
 
 56/56 tests pass, all on a synthetic (random-weight) model in a sandbox with no GPU — that setup validates *mechanism*, not language quality. Nothing here has run on real weights or a real GPU yet. Default config is Phase 2's plain MSE-K/V cache; Phase 2b's bias-corrected K path (`--use-prod`) exists and is tested but underperformed MSE in every full-model comparison run during development. This isn't just an under-tuned hyperparameter — a 2048x range of the relevant knob (`proj_bits`) produced no change, so it's a real open question, not a tuning gap. See `ARCHITECTURE.md` §18 for the investigation.
