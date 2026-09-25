@@ -47,9 +47,13 @@ class RandomRotation:
         self.R = random_orthogonal_matrix(dim, seed=seed, device=device, dtype=dtype)
 
     def apply(self, x: torch.Tensor) -> torch.Tensor:
+        if self.R.device != x.device or self.R.dtype != x.dtype:
+            self.R = self.R.to(device=x.device, dtype=x.dtype)
         return x @ self.R
 
     def invert(self, x_rot: torch.Tensor) -> torch.Tensor:
+        if self.R.device != x_rot.device or self.R.dtype != x_rot.dtype:
+            self.R = self.R.to(device=x_rot.device, dtype=x_rot.dtype)
         # R is orthogonal: R^-1 == R^T
         return x_rot @ self.R.T
 

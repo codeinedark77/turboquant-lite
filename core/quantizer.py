@@ -66,6 +66,10 @@ class TurboQuantMSE:
         """x: [..., head_dim], already rotated. Returns (idx, scale)."""
         scale = x.norm(dim=-1, keepdim=True).clamp(min=1e-8)
         x_norm = x / scale
+        if self.boundaries.device != x_norm.device:
+            self.boundaries = self.boundaries.to(x_norm.device)
+        if self.levels.device != x_norm.device:
+            self.levels = self.levels.to(x_norm.device)
         idx = torch.bucketize(x_norm.contiguous(), self.boundaries)
         return idx, scale
 
@@ -107,9 +111,13 @@ class TurboQuantProd(TurboQuantMSE):
     def quantize(self, x: torch.Tensor) -> dict:
         x_rot = self.rotation.apply(x)
         idx, scale = self._quantize_rotated(x_rot)
+        if self.levels.device != idx.device:
+            self.levels = self.levels.to(idx.device)
         k_hat_rot = self.levels[idx] * scale
         residual = x_rot - k_hat_rot
         r_norm = residual.norm(dim=-1, keepdim=True).clamp(min=1e-12)
+        if self.S.device != residual.device or self.S.dtype != residual.dtype:
+            self.S = self.S.to(device=residual.device, dtype=residual.dtype)
         signs = torch.sign(residual @ self.S.T)
         signs = torch.where(signs == 0, torch.ones_like(signs), signs)
         return {"idx": idx, "scale": scale, "r_norm": r_norm, "signs": signs}
@@ -125,9 +133,13 @@ class TurboQuantProd(TurboQuantMSE):
         (every query position against every key position), use
         estimate_attention_scores instead — this method alone would silently
         compute only the diagonal, which is a different (wrong) thing."""
+        if self.levels.device != q["idx"].device:
+            self.levels = self.levels.to(q["idx"].device)
         k_hat_rot = self.reconstruct_rotated(q)
         direct = (query_rot * k_hat_rot).sum(dim=-1)
 
+        if self.S.device != query_rot.device or self.S.dtype != query_rot.dtype:
+            self.S = self.S.to(device=query_rot.device, dtype=query_rot.dtype)
         q_proj = query_rot @ self.S.T  # [..., proj_bits]
         m = self.proj_bits
         correction = (
@@ -146,9 +158,13 @@ class TurboQuantProd(TurboQuantMSE):
         estimate_inner_product, applied pairwise instead of aligned:
         direct[i,j] = q_rot[i] . k_hat_rot[j], correction[i,j] built the same
         way via two matmuls instead of one reduction."""
+        if self.levels.device != q["idx"].device:
+            self.levels = self.levels.to(q["idx"].device)
         k_hat_rot = self.reconstruct_rotated(q)  # [..., S_k, D]
         direct = query_rot @ k_hat_rot.transpose(-1, -2)  # [..., S_q, S_k]
 
+        if self.S.device != query_rot.device or self.S.dtype != query_rot.dtype:
+            self.S = self.S.to(device=query_rot.device, dtype=query_rot.dtype)
         q_proj = query_rot @ self.S.T  # [..., S_q, proj_bits]
         corr_raw = q_proj @ q["signs"].transpose(-1, -2)  # [..., S_q, S_k]
         r_norm_row = q["r_norm"].transpose(-1, -2)  # [..., 1, S_k]

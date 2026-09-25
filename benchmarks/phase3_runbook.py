@@ -71,14 +71,14 @@ def load_model(model_name: str, device: str = "cuda"):
 def build_cache(model, cfg, k_bits: int, v_bits: int, use_prod: bool):
     if use_prod:
         from inference.attention_hook import build_turboquant_prod_cache, register_turboquant_prod_attention
-        cache, layers = build_turboquant_prod_cache(cfg.num_hidden_layers, cfg.head_dim, k_bits, v_bits)
+        cache, layers = build_turboquant_prod_cache(cfg.num_hidden_layers, getattr(cfg, "head_dim", cfg.hidden_size // cfg.num_attention_heads), k_bits, v_bits)
         impl = register_turboquant_prod_attention(layers, name="phase3_prod")
         model.set_attn_implementation(impl)
         return cache
     else:
         from inference.kv_cache import build_turboquant_cache
         model.set_attn_implementation("eager")
-        return build_turboquant_cache(cfg.num_hidden_layers, cfg.head_dim, k_bits, v_bits)
+        return build_turboquant_cache(cfg.num_hidden_layers, getattr(cfg, "head_dim", cfg.hidden_size // cfg.num_attention_heads), k_bits, v_bits)
 
 
 def vram_profile(model, tokenizer, cfg, k_bits, v_bits, use_prod, context_lengths=(512, 2048, 8192)):
@@ -87,21 +87,26 @@ def vram_profile(model, tokenizer, cfg, k_bits, v_bits, use_prod, context_length
     for ctx_len in context_lengths:
         input_ids = torch.randint(0, tokenizer.vocab_size, (1, ctx_len), device=device)
 
-        torch.cuda.reset_peak_memory_stats(device)
-        with torch.no_grad():
-            model.set_attn_implementation("eager")
-            model(input_ids, use_cache=True)
-        baseline_peak = torch.cuda.max_memory_allocated(device) / 1024**3
+        try:
+            torch.cuda.reset_peak_memory_stats(device)
+            with torch.no_grad():
+                model.set_attn_implementation("eager")
+                model(input_ids, use_cache=True)
+            baseline_peak = torch.cuda.max_memory_allocated(device) / 1024**3
 
-        torch.cuda.reset_peak_memory_stats(device)
-        with torch.no_grad():
-            cache = build_cache(model, cfg, k_bits, v_bits, use_prod)
-            model(input_ids, use_cache=True, past_key_values=cache)
-        tq_peak = torch.cuda.max_memory_allocated(device) / 1024**3
+            torch.cuda.reset_peak_memory_stats(device)
+            with torch.no_grad():
+                cache = build_cache(model, cfg, k_bits, v_bits, use_prod)
+                model(input_ids, use_cache=True, past_key_values=cache)
+            tq_peak = torch.cuda.max_memory_allocated(device) / 1024**3
 
-        print(f"  ctx={ctx_len:>6}: baseline peak {baseline_peak:.2f} GB | "
-              f"TurboQuant K{k_bits}/V{v_bits} peak {tq_peak:.2f} GB | "
-              f"saved {baseline_peak - tq_peak:.2f} GB")
+            print(f"  ctx={ctx_len:>6}: baseline peak {baseline_peak:.2f} GB | "
+                  f"TurboQuant K{k_bits}/V{v_bits} peak {tq_peak:.2f} GB | "
+                  f"saved {baseline_peak - tq_peak:.2f} GB")
+        except torch.OutOfMemoryError:
+            print(f"  ctx={ctx_len:>6}: [!] CUDA Out of Memory on RTX 3050. Hardware limit reached.")
+            torch.cuda.empty_cache()
+            break
 
 
 def perplexity_delta(model, tokenizer, cfg, k_bits, v_bits, use_prod, text: str):

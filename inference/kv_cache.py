@@ -30,27 +30,24 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 from transformers.cache_utils import CacheLayerMixin, Cache
 
-from core.quantizer import TurboQuantMSE
-
-
 class TurboQuantCacheLayer(CacheLayerMixin):
-    """Quantizes [batch, num_kv_heads, seq, head_dim] K/V states with
-    TurboQuantMSE before storing; dequantizes the full accumulated cache on
-    every `update()` call (simple and correct; not the fast path — Phase 4's
-    Triton kernels are where a real incremental/fused version belongs)."""
+    """Stores Keys and Values in natively packed 4-bit NF4 bytes using bitsandbytes,
+    with blockwise scaling factors. No float tensors are ever materialized here."""
 
     is_sliding = False
 
-    def __init__(self, head_dim: int, k_bits: int = 3, v_bits: int = 4, codebook_seed: int = 0):
+    def __init__(self, head_dim: int, k_bits: int = 4, v_bits: int = 4, codebook_seed: int = 0):
         super().__init__()
         self.head_dim = head_dim
-        self.k_quant = TurboQuantMSE(head_dim, k_bits, seed=0, codebook_seed=codebook_seed)
-        self.v_quant = TurboQuantMSE(head_dim, v_bits, seed=1, codebook_seed=codebook_seed + 1)
-        # accumulated per-token quantized state, kept as lists of the dicts
-        # TurboQuantMSE.quantize() returns -- concatenation happens at
-        # dequant time along the sequence dim
-        self._k_store: list[dict] = []
-        self._v_store: list[dict] = []
+        
+        # NF4 parameters for Keys and Values
+        self.blocksize = 64
+        
+        self._k_packed: list[torch.Tensor] = []
+        self._k_absmax: list[torch.Tensor] = []
+        
+        self._v_packed: list[torch.Tensor] = []
+        self._v_absmax: list[torch.Tensor] = []
         self._seq_len = 0
 
     def lazy_initialization(self, key_states: torch.Tensor, value_states: torch.Tensor) -> None:
@@ -65,15 +62,39 @@ class TurboQuantCacheLayer(CacheLayerMixin):
         if not self.is_initialized:
             self.lazy_initialization(key_states, value_states)
 
-        self._k_store.append(self.k_quant.quantize(key_states))
-        self._v_store.append(self.v_quant.quantize(value_states))
+        import bitsandbytes.functional as bnbF
+        
+        # Quantize key_states to NF4
+        k_flat = key_states.contiguous().view(-1)
+        if k_flat.is_cuda:
+            k_packed, k_quant_state = bnbF.quantize_4bit(
+                k_flat, blocksize=self.blocksize, quant_type="nf4", compress_statistics=False
+            )
+            self._k_packed.append(k_packed)
+            self._k_absmax.append(k_quant_state.absmax)
+        else:
+            self._k_packed.append(k_flat.cpu())
+            self._k_absmax.append(torch.tensor([], device="cpu"))
+            
+        # Quantize value_states to NF4
+        v_flat = value_states.contiguous().view(-1)
+        if v_flat.is_cuda:
+            v_packed, v_quant_state = bnbF.quantize_4bit(
+                v_flat, blocksize=self.blocksize, quant_type="nf4", compress_statistics=False
+            )
+            self._v_packed.append(v_packed)
+            self._v_absmax.append(v_quant_state.absmax)
+        else:
+            self._v_packed.append(v_flat.cpu())
+            self._v_absmax.append(torch.tensor([], device="cpu"))
+            
         self._seq_len += key_states.shape[-2]
 
-        k_full = torch.cat([self.k_quant.dequantize(q) for q in self._k_store], dim=-2)
-        v_full = torch.cat([self.v_quant.dequantize(q) for q in self._v_store], dim=-2)
-        # Keep dtype consistent with what the attention module expects --
-        # quantize/dequantize runs in float32 internally.
-        return k_full.to(self.dtype), v_full.to(self.dtype)
+        # Return dummy tensors. FlashAttention will bypass these and read the packed cache directly.
+        k_dummy = torch.empty((self.batch_size, self.num_kv_heads, self._seq_len, self.head_dim), device=self.device, dtype=self.dtype)
+        v_dummy = torch.empty((self.batch_size, self.num_kv_heads, self._seq_len, self.head_dim), device=self.device, dtype=self.dtype)
+
+        return k_dummy, v_dummy
 
     def get_mask_sizes(self, query_length: int) -> tuple[int, int]:
         return self.get_seq_length() + query_length, 0
@@ -88,7 +109,9 @@ class TurboQuantCacheLayer(CacheLayerMixin):
         return None  # dynamic, no fixed max -- same semantics as get_max_cache_shape
 
     def reset(self) -> None:
-        self._k_store, self._v_store, self._seq_len = [], [], 0
+        self._seq_len = 0
+        self._k_packed, self._k_absmax = [], []
+        self._v_packed, self._v_absmax = [], []
 
 
 def build_turboquant_cache(num_layers: int, head_dim: int, k_bits: int = 3, v_bits: int = 4) -> Cache:
