@@ -1,6 +1,5 @@
 # turboquant-lite
 
-[![Build](https://img.shields.io/badge/build-passing-brightgreen)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org)
 [![Part of Agentic_](https://img.shields.io/badge/Part_of-Agentic__Super__OS-8A2BE2.svg)](#)
@@ -55,7 +54,7 @@ graph TD
 ## Install
 
 ```bash
-pip install torch transformers accelerate bitsandbytes fastapi uvicorn --break-system-packages
+pip install torch transformers accelerate bitsandbytes fastapi uvicorn
 # or: pip install -e ".[serve]"
 huggingface-cli login   # gated Llama weights need an accepted license + token
 ```

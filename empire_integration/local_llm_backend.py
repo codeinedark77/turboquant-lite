@@ -146,8 +146,8 @@ def get_llm_with_fallback(local_cfg: Optional[LocalBackendConfig] = None, groq_l
     if local_cfg is not None and is_local_backend_healthy(local_cfg, client=health_client):
         try:
             return get_local_llm(local_cfg, health_client=health_client, http_async_client=http_async_client)
-        except RuntimeError:
-            pass
+        except RuntimeError as e:
+            logger.warning("Failed to initialize LLM backend: %s", e)
     if groq_llm is None:
         raise RuntimeError("local backend unavailable and no groq_llm fallback provided")
     return groq_llm
