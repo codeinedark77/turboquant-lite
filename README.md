@@ -107,3 +107,8 @@ server/       OpenAI-compatible FastAPI server — the actual pluggable delivera
 Everything checkable without a GPU has been checked: the core algorithm's theoretical properties (empirically validated, not just derived), the Cache/AttentionInterface integrations against transformers' *current* API (fetched from source, not assumed), batch correctness, and the server's request/response plumbing including input validation. Triton kernels (Phase 4) were confirmed un-runnable in the dev sandbox — no GPU means no CPU fallback, so they weren't written rather than shipped untested.
 
 What's still open, and needs real hardware to close: does Phase 2b's Prod path ever beat plain MSE on real weights, and what does Phase 3's actual perplexity/VRAM/latency data say about whether Phase 4 is worth building at all.
+
+## ⚠️ Known Architectural Limitations
+
+- **Synthetic Testing Only**: The test suite currently passes on a synthetic (random-weight) model in a GPU-less sandbox. While this validates the mathematical *mechanism* and API plumbing, it does not guarantee language quality retention or true end-to-end functionality on actual LLaMA/Mistral weights running on real CUDA hardware.
+- **`--use-prod` Bias-Correction Path**: The Phase 2b bias-corrected K path (toggled via `--use-prod`) is tested but underperformed the plain MSE path in every full-model comparison run during development. Extensive hyperparameter tuning (`proj_bits`) yielded no improvements. It remains an unresolved open question why the mathematically "superior" bias-correction formula empirically degrades output relative to naive MSE.
