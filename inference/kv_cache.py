@@ -90,14 +90,22 @@ class TurboQuantCacheLayer(CacheLayerMixin):
             
         self._seq_len += key_states.shape[-2]
 
-        # Return dummy tensors. FlashAttention will bypass these and read the packed cache directly.
-        k_dummy = torch.empty((self.batch_size, self.num_kv_heads, self._seq_len, self.head_dim), device=self.device, dtype=self.dtype)
-        v_dummy = torch.empty((self.batch_size, self.num_kv_heads, self._seq_len, self.head_dim), device=self.device, dtype=self.dtype)
+        # Return dummy tensors for eager attention.
+        k_dummy = torch.zeros((self.batch_size, self.num_kv_heads, self._seq_len, self.head_dim), device=self.device, dtype=self.dtype)
+        v_dummy = torch.zeros((self.batch_size, self.num_kv_heads, self._seq_len, self.head_dim), device=self.device, dtype=self.dtype)
 
         return k_dummy, v_dummy
 
-    def get_mask_sizes(self, query_length: int) -> tuple[int, int]:
-        return self.get_seq_length() + query_length, 0
+    def get_mask_sizes(self, cache_position: torch.Tensor | int) -> tuple[int, int]:
+        kv_offset = 0
+        if isinstance(cache_position, int):
+            query_length = cache_position
+        elif hasattr(cache_position, "shape"):
+            query_length = cache_position.shape[0]
+        else:
+            query_length = len(cache_position)
+        kv_length = self.get_seq_length() + query_length
+        return kv_length, kv_offset
 
     def get_seq_length(self) -> int:
         return self._seq_len
