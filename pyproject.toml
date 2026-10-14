@@ -12,13 +12,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
-# transformers>=4.40 previously stated here was too permissive: this code
-# requires the CacheLayerMixin/AttentionInterface API (inference/kv_cache.py,
-# inference/attention_hook.py), which post-dates 4.40 -- confirmed working
-# against 5.14.1 in this project's actual testing, not verified further back
-# than that, so pinning to the tested floor rather than guessing lower.
-serve = ["fastapi>=0.110", "uvicorn>=0.29", "transformers>=5.14"]
+dev = [
+    "pytest>=8.0",
+    "fastapi>=0.110",
+    "httpx>=0.27.0",
+    "uvicorn>=0.29",
+    "transformers>=4.45",
+    "numpy",
+]
+serve = ["fastapi>=0.110", "uvicorn>=0.29", "transformers>=4.45"]
 empire = ["langchain-openai>=1.0", "langchain-core>=1.0"]
 
 [tool.pytest.ini_options]
