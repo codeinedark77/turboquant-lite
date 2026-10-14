@@ -62,11 +62,16 @@ class TurboQuantCacheLayer(CacheLayerMixin):
         if not self.is_initialized:
             self.lazy_initialization(key_states, value_states)
 
-        import bitsandbytes.functional as bnbF
+        bnbF = None
+        if key_states.is_cuda:
+            try:
+                import bitsandbytes.functional as bnbF
+            except ImportError:
+                bnbF = None
         
         # Quantize key_states to NF4
         k_flat = key_states.contiguous().view(-1)
-        if k_flat.is_cuda:
+        if k_flat.is_cuda and bnbF is not None:
             k_packed, k_quant_state = bnbF.quantize_4bit(
                 k_flat, blocksize=self.blocksize, quant_type="nf4", compress_statistics=False
             )
@@ -78,7 +83,7 @@ class TurboQuantCacheLayer(CacheLayerMixin):
             
         # Quantize value_states to NF4
         v_flat = value_states.contiguous().view(-1)
-        if v_flat.is_cuda:
+        if v_flat.is_cuda and bnbF is not None:
             v_packed, v_quant_state = bnbF.quantize_4bit(
                 v_flat, blocksize=self.blocksize, quant_type="nf4", compress_statistics=False
             )
