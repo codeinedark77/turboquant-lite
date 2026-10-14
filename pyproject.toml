@@ -19,9 +19,11 @@ dev = [
     "uvicorn>=0.29",
     "transformers>=4.45",
     "numpy",
+    "langchain-openai>=0.1.0",
+    "langchain-core>=0.1.0",
 ]
 serve = ["fastapi>=0.110", "uvicorn>=0.29", "transformers>=4.45"]
-empire = ["langchain-openai>=1.0", "langchain-core>=1.0"]
+empire = ["langchain-openai>=0.1.0", "langchain-core>=0.1.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["validation"]

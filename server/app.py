@@ -190,7 +190,7 @@ def chat_completions(request: ChatCompletionRequest):
 def _stream_response(input_ids, gen_kwargs, model_name: str):
     from transformers import TextIteratorStreamer
 
-    streamer = TextIteratorStreamer(state.tokenizer, skip_prompt=True, skip_special_tokens=True)
+    streamer = TextIteratorStreamer(state.tokenizer, skip_prompt=True, skip_special_tokens=True, timeout=10.0)
     gen_kwargs = {**gen_kwargs, "streamer": streamer}
     thread = threading.Thread(target=lambda: state.model.generate(input_ids, **gen_kwargs))
     thread.start()
